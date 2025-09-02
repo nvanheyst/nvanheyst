@@ -1,6 +1,6 @@
 ## Hi there 👋
 
-I'm passionate about solving problems, especially in robotics and simulation. While I don't come from a traditional programming background, I enjoy building things and exploring new ideas through code.
+I'm a business professional with a passion for the intersection of technology and real-world applications. My interest in robotics and simulation stems from a desire to understand how these technologies can solve practical problems. While I don't come from a traditional programming background and wouldn't call myself a programmer, I enjoy building things and exploring new ideas through code.
 
 Disclaimer: All work and opinions expressed on this profile are my own and do not represent the views of Clearpath Robotics.
 
