@@ -1,5 +1,9 @@
 ## Hi there 👋
 
+I'm passionate about solving problems, especially in robotics and simulation. While I don't come from a traditional programming background, I enjoy building things and exploring new ideas through code.
+
+Disclaimer: All work and opinions expressed on this profile are my own and do not represent the views of Clearpath Robotics.
+
 <!--
 **nvanheyst/nvanheyst** is a ✨ _special_ ✨ repository because its `README.md` (this file) appears on your GitHub profile.
 
