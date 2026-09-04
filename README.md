@@ -10,6 +10,8 @@
   </p>
 
 
+  <img src="contributions.svg" alt="Combined contribution graph" />
+
   Presenting at ROSCon 2026: *Mastering the Jazzy RMW*
 
   Disclaimer: All work and opinions on this profile are my own and do not represent the views of Clearpath Robotics or Rockwell Automation.

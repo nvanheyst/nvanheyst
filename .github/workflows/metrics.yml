@@ -1,0 +1,30 @@
+name: Contribution Graph
+
+on:
+  schedule:
+    - cron: '0 2 * * 0'
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate combined contribution graph
+        env:
+          TOKEN_PERSONAL: ${{ secrets.TOKEN_PERSONAL }}
+          TOKEN_WORK: ${{ secrets.TOKEN_WORK }}
+        run: python3 scripts/generate_contributions.py
+
+      - name: Commit if changed
+        run: |
+          git config user.name "nvanheyst"
+          git config user.email "nqvanheyst@gmail.com"
+          git add contributions.svg
+          git diff --cached --quiet || git commit -m "update contribution graph"
+          git push
