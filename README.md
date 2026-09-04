@@ -9,7 +9,6 @@
     <img src="https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python"/>
   </p>
 
-
   <img src="contributions.svg" alt="Combined contribution graph" />
 
   Presenting at ROSCon 2026: *Mastering the Jazzy RMW*

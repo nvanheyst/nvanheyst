@@ -23,15 +23,17 @@ query($login: String!, $from: DateTime!, $to: DateTime!) {
 }
 """
 
+# Light GitHub color scheme
 COLORS = ["#ebedf0", "#9be9a8", "#40c463", "#30a14e", "#216e39"]
 
-CELL = 10
+CELL = 12
 GAP = 3
 STEP = CELL + GAP
-PAD_LEFT = 28
-PAD_TOP = 18
-PAD_BOTTOM = 8
-PAD_RIGHT = 8
+
+PAD_CARD = 24          # inner card padding (left/right/bottom)
+PAD_TOP_INNER = 60     # space inside card above grid (title + subtitle + month labels)
+PAD_BOTTOM_INNER = 36  # space inside card below grid (streak + legend)
+DAY_LABEL_W = 32       # width reserved left of grid for Mon/Wed/Fri
 
 
 def fetch(token: str, login: str, from_date: str, to_date: str) -> dict[str, int]:
@@ -53,7 +55,7 @@ def fetch(token: str, login: str, from_date: str, to_date: str) -> dict[str, int
     return out
 
 
-def color(count: int) -> str:
+def cell_color(count: int) -> str:
     if count == 0:
         return COLORS[0]
     if count <= 3:
@@ -65,57 +67,172 @@ def color(count: int) -> str:
     return COLORS[4]
 
 
-def render(contributions: dict[str, int]) -> str:
+def _streaks(contributions: dict[str, int], today: datetime) -> tuple[int, int]:
+    current = 0
+    d = today
+    while contributions.get(d.strftime("%Y-%m-%d"), 0) > 0:
+        current += 1
+        d -= timedelta(days=1)
+
+    longest = run = 0
+    for date_str in sorted(contributions):
+        if contributions[date_str] > 0:
+            run += 1
+            longest = max(longest, run)
+        else:
+            run = 0
+    return current, longest
+
+
+def render(contributions: dict[str, int], login_personal: str, login_work: str) -> str:
     today = datetime.now(timezone.utc).date()
-    # Align start to the most recent Sunday, 52 weeks back
     start = today - timedelta(weeks=52)
+    # Align to Sunday
     start -= timedelta(days=(start.weekday() + 1) % 7)
 
     weeks: list[list] = []
     day = start
     while day <= today:
-        week = [day + timedelta(days=i) for i in range(7)]
-        weeks.append(week)
+        weeks.append([day + timedelta(days=i) for i in range(7)])
         day += timedelta(weeks=1)
 
-    width = PAD_LEFT + len(weeks) * STEP + PAD_RIGHT
-    height = PAD_TOP + 7 * STEP + PAD_BOTTOM
+    grid_w = len(weeks) * STEP
+    grid_h = 7 * STEP
 
-    cells = []
-    month_labels = []
-    seen_months: set[int] = set()
-    day_names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+    inner_w = DAY_LABEL_W + grid_w
+    card_w = PAD_CARD + inner_w + PAD_CARD
+    card_h = PAD_CARD + PAD_TOP_INNER + grid_h + PAD_BOTTOM_INNER + PAD_CARD
 
+    # Grid origin (inside card)
+    gx = PAD_CARD + DAY_LABEL_W
+    gy = PAD_CARD + PAD_TOP_INNER
+
+    total = sum(contributions.values())
+    current_streak, longest_streak = _streaks(contributions, today)
+    font = "system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
+    label_color = "#57606a"
+
+    # --- Title and subtitle ---
+    title_y = PAD_CARD + 18
+    subtitle_y = PAD_CARD + 34
+    title = (
+        f'<text x="{PAD_CARD}" y="{title_y}" font-size="14" font-weight="700" '
+        f'fill="#24292f" font-family="{font}">Contributions '
+        f'<tspan font-size="11" font-weight="400" fill="{label_color}">· </tspan>'
+        f'<tspan font-size="13" font-weight="600" fill="#24292f">{login_personal}</tspan>'
+        f'<tspan font-size="11" font-weight="400" fill="{label_color}"> + {login_work}</tspan>'
+        f'</text>'
+    )
+    subtitle = (
+        f'<text x="{PAD_CARD}" y="{subtitle_y}" font-size="11" fill="{label_color}" '
+        f'font-family="{font}">{total:,} contributions in the last year</text>'
+    )
+
+    # --- Pre-compute each month's week span for centered labels ---
+    month_week_indices: dict[tuple, list[int]] = {}
     for wi, week in enumerate(weeks):
-        x = PAD_LEFT + wi * STEP
+        for d in week:
+            if d <= today:
+                key = (d.year, d.month)
+                if key not in month_week_indices:
+                    month_week_indices[key] = []
+                if wi not in month_week_indices[key]:
+                    month_week_indices[key].append(wi)
+
+    # --- Month labels (fire on week that contains the 1st of each month) ---
+    month_labels = []
+    seen_year_months: set[tuple] = set()
+    month_label_y = gy - 6
+
+    # --- Day-of-week labels ---
+    day_names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+    day_label_els = [
+        f'<text x="{PAD_CARD + DAY_LABEL_W - 5}" y="{gy + di * STEP + CELL}" '
+        f'font-size="9" fill="{label_color}" font-family="{font}" text-anchor="end">'
+        f'{day_names[di]}</text>'
+        for di in (1, 3, 5)
+    ]
+
+    # --- Cells ---
+    cells = []
+    for wi, week in enumerate(weeks):
+        x = gx + wi * STEP
+        # Month label: fires on the week that contains the 1st of a new month
+        for offset in range(7):
+                check = week[0] + timedelta(days=offset)
+                if check.day == 1 and check <= today and (check.year, check.month) not in seen_year_months:
+                    is_first = len(seen_year_months) == 0
+                    is_current = (check.year == today.year and check.month == today.month)
+                    seen_year_months.add((check.year, check.month))
+                    span = month_week_indices.get((check.year, check.month), [wi])
+                    center_x = gx + min(span) * STEP + len(span) * STEP / 2
+                    label = check.strftime("%b") + (f" '{check.strftime('%y')}" if check.month == 1 or is_first or is_current else "")
+                    month_labels.append(
+                        f'<text x="{center_x:.0f}" y="{month_label_y}" font-size="10" '
+                        f'fill="{label_color}" font-family="{font}" text-anchor="middle">'
+                        f'{label}</text>'
+                    )
+                    break
+
         for di, d in enumerate(week):
             if d > today:
                 continue
             date_str = d.strftime("%Y-%m-%d")
             count = contributions.get(date_str, 0)
-            y = PAD_TOP + di * STEP
+            y = gy + di * STEP
             cells.append(
                 f'<rect x="{x}" y="{y}" width="{CELL}" height="{CELL}" rx="2" '
-                f'fill="{color(count)}"><title>{date_str}: {count}</title></rect>'
+                f'fill="{cell_color(count)}"><title>{date_str}: {count}</title></rect>'
             )
-            if di == 0 and d.month not in seen_months:
-                seen_months.add(d.month)
-                month_labels.append(
-                    f'<text x="{x}" y="{PAD_TOP - 4}" font-size="9" '
-                    f'fill="#767676" font-family="system-ui,sans-serif">'
-                    f'{d.strftime("%b")}</text>'
-                )
 
-    day_label_els = [
-        f'<text x="{PAD_LEFT - 4}" y="{PAD_TOP + di * STEP + CELL}" font-size="9" '
-        f'fill="#767676" font-family="system-ui,sans-serif" text-anchor="end">'
-        f'{day_names[di]}</text>'
-        for di in (1, 3, 5)
+    # --- Bottom row: streak stats (left) + legend (right), baseline-aligned ---
+    row_y = gy + grid_h + 24       # text baseline
+    box_y = row_y - CELL + 2       # legend squares aligned to text baseline
+
+    streak_text = (
+        f'<text x="{PAD_CARD}" y="{row_y}" font-size="10" '
+        f'fill="{label_color}" font-family="{font}" font-weight="500">'
+        f'Current streak: {current_streak}d'
+        f'  ·  Longest: {longest_streak}d</text>'
+    )
+
+    legend_x_start = card_w - PAD_CARD - len(COLORS) * (CELL + 3) - 40
+    legend = [
+        streak_text,
+        (
+            f'<text x="{legend_x_start - 8}" y="{row_y}" font-size="10" '
+            f'fill="{label_color}" font-family="{font}" text-anchor="end">Less</text>'
+        ),
+    ]
+    for i, c in enumerate(COLORS):
+        lx = legend_x_start + i * (CELL + 3)
+        legend.append(f'<rect x="{lx}" y="{box_y}" width="{CELL}" height="{CELL}" rx="2" fill="{c}"/>')
+    more_x = legend_x_start + len(COLORS) * (CELL + 3) + 4
+    legend.append(
+        f'<text x="{more_x}" y="{row_y}" font-size="10" '
+        f'fill="{label_color}" font-family="{font}">More</text>'
+    )
+
+    shadow_filter = (
+        '<defs><filter id="s" x="-5%" y="-5%" width="110%" height="120%">'
+        '<feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#000" flood-opacity="0.08"/>'
+        '</filter></defs>'
+    )
+    elements = [
+        shadow_filter,
+        f'<rect width="{card_w}" height="{card_h}" rx="10" fill="#ffffff" filter="url(#s)"/>',
+        title,
+        subtitle,
+        *month_labels,
+        *day_label_els,
+        *cells,
+        *legend,
     ]
 
     return (
-        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}">\n'
-        + "\n".join(month_labels + day_label_els + cells)
+        f'<svg xmlns="http://www.w3.org/2000/svg" '
+        f'width="{card_w}" height="{card_h}" viewBox="0 0 {card_w} {card_h}">\n'
+        + "\n".join(elements)
         + "\n</svg>\n"
     )
 
@@ -144,14 +261,16 @@ def main() -> None:
 
     # Only update if either account had activity in the last 7 days
     cutoff = (datetime.now(timezone.utc).date() - timedelta(days=7)).isoformat()
-    recent = sum(n for d, n in personal.items() if d >= cutoff) + \
-             sum(n for d, n in work.items() if d >= cutoff)
+    recent = (
+        sum(n for d, n in personal.items() if d >= cutoff)
+        + sum(n for d, n in work.items() if d >= cutoff)
+    )
     if recent == 0:
         print("no contributions in the last 7 days — skipping update")
         return
 
     print(f"total contributions: {sum(merged.values())}")
-    svg = render(dict(merged))
+    svg = render(dict(merged), login_personal, login_work)
 
     with open(output, "w") as f:
         f.write(svg)
